@@ -1,0 +1,66 @@
+<html>
+    <head></head>
+    <body>
+        <h1>Who are you?</h1>
+        <h2 id="field"></h2>
+        <script>
+            if (window.location.hash && 
+                window.location.hash.length > 0 && 
+                window.location.hash.split('=').length == 2) {
+                document.getElementById("field").innerHTML = "Wait...I might know who you are";
+
+                // parse out the id_token and store in cookie
+                var token = window.location.hash.split('=')[1];
+                setCookie("id_token", token);
+                getMe(token);
+            }
+            else {
+                // check for id_token stored in cookie
+                var token = getCookie("id_token");
+                if (token) 
+                    getMe(token);
+                else
+                    document.getElementById("field").innerHTML = "<a href='/auth'>Login to find out</a>";
+            }
+
+            function getMe(token) {
+                fetch("/api/me", {
+                    method: "GET",
+                    headers: {
+                        "Authorization": `Bearer ${token}`
+                    }
+                }).then(function(res) {
+                    if (!res.ok) {
+                        document.getElementById("field").innerHTML = "<a href='/auth'>You have a cookie token cache is empty or expired...click to sign back in</a>";
+                    }
+                    return res.json();
+                }).then((jsonResponse) => {
+                    document.getElementById("field").innerHTML = `You are ${jsonResponse.displayName} (${jsonResponse.userPrincipalName})`;
+                });
+            }
+
+            function setCookie(cname, cvalue) {
+                var d = new Date();
+                d.setTime(d.getTime() + (90*24*60*60*1000)); // 90 days from now
+                var expires = "expires="+ d.toUTCString();
+                document.cookie = `${cname}=${cvalue};${expires};path=/`;
+            } 
+
+            function getCookie(cname) {
+                var name = cname + "=";
+                var decodedCookie = decodeURIComponent(document.cookie);
+                var ca = decodedCookie.split(';');
+                for (var i = 0; i < ca.length; i++) {
+                    var c = ca[i];
+                    while (c.charAt(0) == ' ') {
+                        c = c.substring(1);
+                    }
+                    if (c.indexOf(name) == 0) {
+                        return c.substring(name.length, c.length);
+                    }
+                }
+                return null;
+            }
+        </script>
+    </body>
+</html>
