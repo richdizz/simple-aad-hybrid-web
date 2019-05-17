@@ -4,6 +4,7 @@ const passportOIDC = require("passport");
 const path = require("path");
 const fetch = require("node-fetch");
 
+// passport strategy and options for securing the API
 var BearerStrategy = require("passport-azure-ad").BearerStrategy;
 var bearerOptions = {
     identityMetadata: "https://login.microsoftonline.com/7798a0ee-1875-4624-8de8-77d21f8140d0/v2.0/.well-known/openid-configuration",
@@ -14,6 +15,7 @@ var bearerOptions = {
     passReqToCallback: false,
 };
 
+// passport strategy and options for logging in the user
 var OIDCStrategy = require("passport-azure-ad").OIDCStrategy;
 var oidcOptions = {
     identityMetadata: "https://login.microsoftonline.com/7798a0ee-1875-4624-8de8-77d21f8140d0/v2.0/.well-known/openid-configuration",
@@ -35,7 +37,7 @@ var oidcOptions = {
     clockSkew: null
 };
 
-// this is a global HACK for in-memory "token cache"
+// this global users array is a HACK "token cache" to simplify the pattern used in this sample
 users = [];
 findByOid = (oid, fn) => {
     for (var i = 0, len = users.length; i < len; i++) {
@@ -46,10 +48,12 @@ findByOid = (oid, fn) => {
     return fn(null, null);
 };
 
+// bearerStrategy used for securing the API
 var bearerStrategy = new BearerStrategy(bearerOptions, (token, done) => {
     done(null, {}, token);
 });
 
+// oidcStrategy used for logging in the users
 var oidcStrategy = new OIDCStrategy(oidcOptions, (iss, sub, profile, access_token, refresh_token, done) => {
     if (!profile.oid) {
       return done(new Error("No oid found"), null);
@@ -90,11 +94,7 @@ function ensureAuthenticated(req, res, next) {
 
 // API path
 app.get("/api/me", passportBearer.authenticate("oauth-bearer", { session: false }), (req, res) => {
-    console.log(req);
     var claims = req.authInfo;
-    console.log("User info: ", req.user);
-    console.log("Validated claims: ", claims);
-    
 
     // look up the user in token cache
     findByOid(claims["oid"], (err, user) => {
@@ -111,29 +111,26 @@ app.get("/api/me", passportBearer.authenticate("oauth-bearer", { session: false 
                     "Authorization": `Bearer ${user.access_token}`
                 }
             }).then(function(graph_res) {
+                // check if the graph call was successful
                 if (!graph_res.ok) {
                     res.status(graph_res.status);
                     res.send(graph_res.statusText);
                 }
                 return graph_res.json();
             }).then((jsonResponse) => {
+                // return the json to the client
                 res.status(200).json(jsonResponse);
             });
         }
     });
 });
 
-// root view
+// root view renders the single page app
 app.get("/", (req, res) => {
   res.render("index.html", { user: req.user });
 });
 
-// secure view
-app.get("/secure", ensureAuthenticated, (req, res) => {
-  res.render("account", { user: req.user });
-});
-
-// secure view
+// GET auth view used to authenticate user...first part of auth flow
 app.get("/auth", (req, res, next) => {
     // use the oidc configuration to login the user
     passportOIDC.authenticate("azuread-openidconnect", { 
@@ -144,6 +141,7 @@ app.get("/auth", (req, res, next) => {
     res.redirect("/");
 });
 
+// POST auth view handles the response from AAD and returns to the SPA wth id_token in hash
 app.post("/auth", (req, res, next) => {
     passportOIDC.authenticate("azuread-openidconnect", { 
         response: res,
@@ -154,10 +152,12 @@ app.post("/auth", (req, res, next) => {
     res.redirect(`/index.html#id_token=${req.body.id_token}`);
 });
 
+// utility function to serialize the user
 passportOIDC.serializeUser(function(user, done) {
     done(null, user.oid);
 });
   
+// utility function to deserialize the user
 passportOIDC.deserializeUser(function(oid, done) {
     findByOid(oid, function (err, user) {
         done(err, user);
